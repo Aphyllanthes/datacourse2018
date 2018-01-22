@@ -31,7 +31,6 @@ drv <- dbDriver('PostgreSQL')
 con <- dbConnect(drv, host='openhydro.de', port=5432, user=getPass('Provide the user'), 
                  password=getPass('Provide the password'), dbname='dwd')
 dbListTables(con)
-dbListFields(con, "only_dwd_stations")
 ```
 
 Build a temporary table called *name_precipitation*, where you should replace *name* with your actual name. This table shall contain 
@@ -212,7 +211,7 @@ Load the anual overview on extreme rainfalls into a data.frame and plot a violin
 select * from Nele_annual_prec
 ```
 ```{r}
-View(rain.annual)
+#View(rain.annual)
 ggplot(rain.annual, aes(factor(id), `extreme rainfall days`)) +
   geom_violin() + xlab("station id") + ylab("amount of extreme rainfall days whithin one year")
 ```
@@ -249,13 +248,21 @@ ggplot(locations, aes(x=lon, y=lat)) + geom_point(shape=18)
 Plot these locations and represent any measure for annual variance in extreme rainfall events by the point size of the used locations.<br>
 **OPTIONAL:** Additionally mark the station showing the most and least recorded extreme rainfalls by another marker into the same plot. (eg. use a green and a red cross or star.)
 ```{r}
-
+rain.locations <- left_join(rain.annual, locations, by="id")
+rain.var <- rain.locations %>% 
+  group_by(id, name, lon, lat) %>% 
+  summarise(var= var(`extreme rainfall days`), sum.extreme.rainfalls = sum(`extreme rainfall days`)) %>% 
+# add a column that specifies the extremes:
+  mutate(extreme = ifelse(sum.extreme.rainfalls == max(rain.var$sum.extreme.rainfalls),
+                          "max", ifelse(sum.extreme.rainfalls == min(rain.var$sum.extreme.rainfalls), "min", "medium")))
+ggplot(rain.var, aes(x=lon, y=lat)) + 
+  geom_point(aes(size=var, color=extreme)) 
 ```
 
 How can you interpret this result?
 <div class="alert alert-info">
 Answer:
-
+The stations with big variance in extreme rainfall events have had some years with many events and some with few. They therefore have a heterogenity over the years. The stations with little variance are affected by the extreme rainfall events mostly in the same amount, and as the colors show, have only had few rainfall events at all. Probably lots of extreme rainfall events are rare, but sometimes they occur. The rare occurence of years with lots of extreme rainfall events makes up the high variance. One might therefore expect a correlation between an increasing variance of yearly extreme rainfall events and the increasing overall amount of extreme rainfall events.
 </div>
 
 ### cleanup
