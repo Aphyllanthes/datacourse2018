@@ -1,0 +1,268 @@
+---
+title: "Advanced SQL"
+author: "Mirko Mälicke"
+output:
+  html_notebook:
+    theme: flatly
+    toc: yes
+  html_document:
+    theme: flatly
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, echo=FALSE, include=T}
+# require the package
+if (!("RPostgreSQL" %in% installed.packages())){
+  install.packages("RPostgreSQL")
+}
+if (!("getPass" %in% installed.packages())){
+  install.packages("getPass")
+}
+require(RPostgreSQL)
+require(getPass)
+require(ggplot2)
+library(dplyr)
+
+
+# establish the connection
+drv <- dbDriver('PostgreSQL')
+con <- dbConnect(drv, host='openhydro.de', port=5432, user=getPass('Provide the user'), 
+                 password=getPass('Provide the password'), dbname='dwd')
+dbListTables(con)
+dbListFields(con, "only_dwd_stations")
+```
+
+Build a temporary table called *name_precipitation*, where you should replace *name* with your actual name. This table shall contain 
+all measurements from the data table holding precipitation information. 
+```{sql connection=con}
+--select * from data limit 10
+create temporary table Nele_precipitation as
+select id, date, value as precipitation from data where variable_id = 1 
+```
+
+Create a view on this table that holds monthly statistics for every station id. Calculate the monthly sum, the highest observed daily 
+rainfall sum, the number of extreme rainfalls (daily precipitation > 30).
+```{sql connection=con}
+create temporary view Nele_prec_summary as
+select id, date_trunc('month', date) as month,
+  sum(precipitation) as summe,
+  max(precipitation) as maxi,
+  sum((precipitation > 30.0)::integer) as "extreme rainfall days" 
+from Nele_precipitation
+group by id, month 
+```
+
+Create a view on the last view, that aggregates the same statistics for anual overviews.
+```{sql connection=con}
+create temporary view Nele_annual_prec as
+select id, date_trunc('year', month) as year,
+  sum(summe) as summe,
+  max(maxi) as maxi,
+  sum("extreme rainfall days") as "extreme rainfall days" 
+from Nele_prec_summary
+group by id, year 
+```
+
+Which station observed the highest monthly rainfall sum?
+```{sql connection=con}
+select n.id, st.name, max(n.summe) as "highest monthly rainfall" from Nele_annual_prec n
+join stations st on n.id=st.id
+group by n.id, st.name
+order by "highest monthly rainfall" desc
+limit 1
+```
+
+Which station observed the most extreme rainfall occurences within one month? Which within one year?
+```{sql connection=con}
+select n.id, st.name,  max(n."extreme rainfall days") as "extreme monthly rainfall occurence" from Nele_prec_summary n
+join stations st on n.id=st.id
+group by n.id, st.name
+order by "extreme monthly rainfall occurence" desc
+limit 1;
+```
+
+```{sql connection=con}
+select n.id, st.name,  max(n."extreme rainfall days") as "extreme annual rainfall occurence" from Nele_annual_prec n
+join stations st on n.id=st.id
+group by n.id, st.name
+order by "extreme annual rainfall occurence" desc
+limit 1
+```
+
+Which was the year with the  most overall extreme rainfall occurences? (ignoring the station)
+```{sql connection=con}
+--create temporary view Nele_year_most_extreme_rainfalls as
+select year, sum("extreme rainfall days") as "extreme rainfall occurences" from Nele_annual_prec 
+group by year
+order by "extreme rainfall occurences" desc
+limit 1
+```
+
+Which is the station with the most extreme rainfall events within this year (from the last chunk)? 
+Which one with the most extreme rainfall events overall?
+```{sql connection=con}
+select e.year, e.id, e.name, e."extreme rainfall days" from 
+  (select year, sum("extreme rainfall days") as "extreme rainfall occurences" 
+  from Nele_annual_prec 
+  group by year
+  order by "extreme rainfall occurences" desc
+  limit 1) y
+join
+  (select a.id,a.year, s.name, a."extreme rainfall days" from Nele_annual_prec a
+  join stations s on s.id=a.id) e
+on y.year = e.year
+order by e."extreme rainfall days" desc
+limit 1
+```
+
+```{sql connection=con}
+select n.id, s.name, sum(n."extreme rainfall days") as "overall extreme rainfall days" from Nele_annual_prec n
+join stations s on n.id=s.id
+group by n.id, s.name
+order by "overall extreme rainfall days" desc
+limit 1
+```
+
+Create a view, that includes only the records from _data_ which fulfilled the extreme rainfall constraint.
+Join another column to this view, that holds the _type of precipitation_ variable. From this Join, create a histogram of _type of precipitation_. Calculate an overall histogram.
+```{sql connection=con}
+-- the extreme rainfall constraint: daily precipitation > 30
+-- type of precipitation: rskf (name in variables) id = 3
+
+create temporary view Nele_extreme_rainfall as
+select id, date, value from data
+where variable_id = 1 and value > 30
+```
+
+```{sql connection=con, output.var="extreme_rainfall"}
+select n.id, n.date, n.value, d.value as type_prec  from Nele_extreme_rainfall n
+join data d on d.id=n.id and d.date = n.date
+join variables v on v.id = d.variable_id
+where v.name = 'type of precipitation'
+```
+
+```{sql connection=con, output.var="overall_prec_type"}
+select * from data
+where variable_id = 3
+```
+
+
+```{r}
+extreme_rainfall$extreme <- T
+overall <- left_join(overall_prec_type, extreme_rainfall[,c("id", "date", "extreme")])
+
+prec_description <- data.frame(value = c(0,1,4,6,7,8), 
+                               descr = c("no precipitation", "only rain (before 1979)", 
+                                         "unknown form of recorded precipitation", "only rain", 
+                                         "only snow", "rain and snow"))
+overall <- left_join(overall, prec_description)
+ggplot(extreme_rainfall, aes(type_prec)) + geom_bar() + ggtitle("type of precipitation of extreme rainfall events")
+ggplot(overall, aes(descr, fill=extreme)) + geom_bar() + ggtitle("overall type of precipitation")
+```
+
+
+**OPTIONAL:** Can you redo the last step and do the same analysis for 'per station' histograms?
+```{sql connection=con, output.var="overall_prec_type1"}
+select 
+  d1.id, d1.name, 
+  d1.date, 
+  case when d1.prec > 30 then 'extreme' else 'normal' end as prec, 
+  e1.type_prec 
+from 
+    (select d.id, s.name, d.date, d.value as prec from data d 
+    join stations s on d.id=s.id
+     where d.variable_id = 1
+    ) d1
+join 
+  (select e.id, e.date, e.value as type_prec from data e where e.variable_id = 3) e1
+on d1.id=e1.id and d1.date=e1.date
+```
+
+```{r}
+overall_stations <- left_join(overall_prec_type1, prec_description, by = c("type_prec"="value"))
+
+part1 <- unique(overall_stations$name)[1:5]
+Part1 <- subset(overall_stations, name %in% part1)
+ggplot(Part1, aes(descr, fill=prec) ) + geom_bar() + facet_grid(name ~ .)
+
+Part1_extreme <- subset(Part1, prec == "extreme")
+ggplot(Part1_extreme, aes(descr)) + geom_bar()  + facet_grid(name ~ .)
+```
+
+```{r}
+part2 <- unique(overall_stations$name)[6:10]
+Part2 <- subset(overall_stations, name %in% part2)
+ggplot(Part2, aes(descr, fill=prec) ) + geom_bar() + facet_grid(name ~ .)
+
+Part2_extreme <- subset(Part2, prec == "extreme")
+ggplot(Part2_extreme, aes(descr)) + geom_bar()  + facet_grid(name ~ .)
+```
+
+
+Use the insights of the last two chunks and write two sentences about the _type of precipitation_ variable. How useful is it? 
+<div class="alert alert-info">
+Answer:
+The type of precipitation only discriminates between the two types rain and snow. Those two types mostly depend on the temperature, and will not influence the amount of precipitation. Because most extreme rainfalls occur in summer and snow is rare at the most stations all over the year, the result doesn't realy show any informations.
+</div>
+
+Load the anual overview on extreme rainfalls into a data.frame and plot a violine plot of the amount of extreme rainfalls per station.
+```{sql connection=con, output.var="rain.annual"}
+select * from Nele_annual_prec
+```
+```{r}
+View(rain.annual)
+ggplot(rain.annual, aes(factor(id), `extreme rainfall days`)) +
+  geom_violin() + xlab("station id") + ylab("amount of extreme rainfall days whithin one year")
+```
+
+Redo the last exercise for the monthly extreme rainfall counts. Does this change the picture?
+What can you say about the distribution of extreme rainfall events from these plots?
+```{sql connection=con, output.var="rain.monthly"}
+select * from Nele_prec_summary
+```
+```{r}
+#View(rain.monthly)
+ggplot(rain.monthly, aes(factor(id), `extreme rainfall days`)) +
+  geom_violin() + xlab("station id") + ylab("amount of extreme rainfall days whithin one month")
+
+head(rain.monthly)
+```
+<div class="alert alert-info">
+Answer:
+The plots are different. The amount of extreme rainfall days within one year is in average at least two times as high as the amount within one month. This means that the extreme rainfall events of the year never occured all in one month, even not in a two months time. I would state from this pictures, that the extreme rainfall events are distributet normal over the year.  
+</div>
+
+Load the locations for the used stations from the database.
+```{sql connection=con, output.var="locations"}
+select id, name, st_x(geometry) as lon, st_y(geometry) as lat 
+from stations 
+where geometry is not null and discipline_id = 1
+```
+```{r}
+View(locations)
+ggplot(locations, aes(x=lon, y=lat)) + geom_point(shape=18)
+```
+
+
+Plot these locations and represent any measure for annual variance in extreme rainfall events by the point size of the used locations.<br>
+**OPTIONAL:** Additionally mark the station showing the most and least recorded extreme rainfalls by another marker into the same plot. (eg. use a green and a red cross or star.)
+```{r}
+
+```
+
+How can you interpret this result?
+<div class="alert alert-info">
+Answer:
+
+</div>
+
+### cleanup
+```{r, include=FALSE}
+dbDisconnect(con)
+```
+
+
+
+
