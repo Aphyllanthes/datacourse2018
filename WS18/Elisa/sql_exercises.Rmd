@@ -67,7 +67,6 @@ select description_id, count(description_id) from vegetation_cover group by desc
 
 Group the vegetation_cover table by the name in vegetation_cover_description and count the instances per label.
 
-
 ```{sql connection=con}
 explain analyze select d.name, count(v.id) from vegetation_cover as v
   join vegetation_cover_description as d

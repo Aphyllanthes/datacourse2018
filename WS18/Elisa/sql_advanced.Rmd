@@ -104,14 +104,14 @@ from elisa_precipitation_year order by extreme_in_year desc limit 1
 Which is the station with the most extreme rainfall events within this year (from the last chunk)? 
 
 ```{sql connection=con}
-select date_trunc('year', year), e.id as station, name
+select date_trunc('year', year), e.id as station, name, extreme_in_year as extreme_events
 from elisa_precipitation_year e
 join stations s on s.id=e.id
 order by extreme_in_year desc limit 1
 ```
 Which one with the most extreme rainfall events overall?
 ```{sql connection=con}
-select e.id as station_with_most_extreme_rainfall_events_id, name
+select e.id as station_with_most_extreme_rainfall_events_id, name, extreme_in_year as extreme_events
 from elisa_precipitation_year e
 join stations s on s.id=e.id
 order by extreme_in_year desc limit 1
@@ -184,18 +184,6 @@ library(dplyr)
 library(tidyr)
 library(ggplot2)
 
-dttm= ymd(rain.annual$date)
-rain.annual %>%
-ggplot(mapping = aes(x=id, y=extreme_in_year))+
-  geom_violin(aes(group=id))
-
-rain.annual %>% filter(id >= 250 & id < 300) %>%
-ggplot(mapping = aes(x=id, y=extreme_in_year))+
-  geom_violin(aes(group=id)) +
-  ggtitle("Number of extreme events per station") + # add a title
-  ylab("N extreme events per year") + # add a y-axis label
-  xlab("Station ID")  # add a x-axis label
-
 rain.annual %>%
 ggplot(mapping = aes(x=year, y=extreme_in_year))+
   geom_violin()+facet_wrap(~id)
@@ -212,17 +200,6 @@ select * from elisa_precipitation_month order by month asc
 
 ```{r}
 #View(rain.monthly) 
-
-rain.monthly %>%
-ggplot(mapping = aes(x=id, y=n_extreme_pp))+
-  geom_violin(aes(group=id))
-
-rain.monthly %>% filter(id >= 250 & id < 260) %>%
-ggplot(mapping = aes(x=id, y=n_extreme_pp))+
-  geom_violin(aes(group=id)) +
-  ggtitle("Number of extreme events per station") + # add a title
-  ylab("N extreme events per month") + # add a y-axis label
-  xlab("Station ID")  # add a x-axis label
   
 rain.monthly %>%
 ggplot(mapping = aes(x=month, y=n_extreme_pp))+

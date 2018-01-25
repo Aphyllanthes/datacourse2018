@@ -11,6 +11,7 @@ Tn90 <- function(x,ID){
   require(lubridate)
   
     
+  
 # ----- prepare variables ------
     df <- x %>% filter(id==ID) 
     
@@ -45,7 +46,7 @@ Tn90 <- function(x,ID){
     
     avg <- mean(Tn90df$Tn90, na.rm = TRUE)
       
-    roc <- Tn90df2$AVG1/Tn90df3$AVG2
+    roc <- (Tn90df2$AVG1/Tn90df3$AVG2)*100
     
 # ----- return -----   
     list <- list(year = Tn90df$year, Tn90 = Tn90df$Tn90, avg = avg, rate_of_change = roc)
