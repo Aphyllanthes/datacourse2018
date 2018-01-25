@@ -5,6 +5,11 @@ You can report issues in the Issue section above. Please be friendly to other gr
 
 ![Figure: List of indices to access climate change](frich_index.png)
 
+## Stations in BW 
+
+![Figure: Map of stations in BW](bwmap.png)
+![Figure: Comaparison of averange temperature](bwtemp.png)
+
 ## Bugs
  1. If you find a bug please report it to the group that is responsible for the function.
  2. If you have a Github account, you can create an `Issue` here and everybody can work on the problem.

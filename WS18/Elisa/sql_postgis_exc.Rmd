@@ -1,0 +1,172 @@
+---
+title: "PostGIS"
+author: "Mirko Mälicke"
+output:
+  html_document: 
+    toc: yes
+    theme: flatly
+  html_notebook:
+    toc: yes
+    theme: flatly
+  pdf_document:
+    toc: yes
+---
+
+```{r, echo=FALSE, include=T}
+# require the package
+if (!("RPostgreSQL" %in% installed.packages())){
+  install.packages("RPostgreSQL")
+}
+if (!("getPass" %in% installed.packages())){
+  install.packages("getPass")
+}
+require(RPostgreSQL)
+require(getPass)
+require(ggplot2)
+
+# establish the connection
+drv <- dbDriver('PostgreSQL')
+con <- dbConnect(drv, host='openhydro.de', port=5432, user=getPass('Provide the user'), 
+                 password=getPass('Provide the password'), dbname='dwd')
+```
+
+```{sql connection=con}
+select * from einzugsgebiete limit 20
+```
+
+
+Select the biggest catchment from the einzugsgebiete table.
+```{sql connection=con}
+select id, name, st_area(geometry) as area from einzugsgebiete order by area desc limit 1
+```
+```{sql connection=con}
+select id, name, st_area(st_transform(geometry, 25832)) as area from einzugsgebiete order by area desc limit 1
+
+```
+
+Select the biggest catchment from the einzugsgebiete table, whichs' name starts with an 'S'.
+```{sql connection=con}
+select id, name, st_area(geometry) as area from einzugsgebiete where name like 'S%' order by area desc limit 1
+```
+
+Select the smallest catchment fron the einzugsgebiete table, which contains a station.
+```{sql connection=con}
+select ezg.id, ezg.name, st_area(ezg.geometry), count(ezg.id) from einzugsgebiete ezg join stations s on st_within(st_transform(s.geometry, 25832), ezg.geometry) 
+group by ezg.id order by st_area asc limit 1
+```
+
+Select the two stations which are closest / farest away from your own location in a single <span style="color:blue">UNION</span> statement.
+
+```{sql connection=con}
+
+select 'closest' as description, id, name, distance / 1000 as "distance [km]" from 
+(select  st_distance(st_transform(geometry, 25832), (select st_transform(geometry, 25832) from stations where name='Elisa Schneider')) as distance, id, name from stations 
+where name!='Elisa Schneider' and geometry is not null 
+order by distance ASC limit 1) t1
+union
+select 'farest' as description, id, name, distance / 1000 as "distance [km]" from
+(select st_distance(st_transform(geometry, 25832), (select st_transform(geometry, 25832) from stations where  name='Elisa Schneider')) as distance, id, name from stations 
+where  name!='Elisa Schneider' and geometry is not null 
+order by distance DESC limit 1) t2
+```
+
+In a new project, you would like to build a new weather station either close to the Herderbau or near the Münster in Freiburg. You decide to chose the 
+location which has less other stations in a 1.5 km radius
+
+```{sql connection=con}
+select 'herdabau' as location, geom from (select ST_GeomFromText('POINT (48.0036891 7.8539392)', 4326) as geom) m
+union
+select 'munster' as location, geom from (select ST_GeomFromText('POINT (47.9958609 7.8523349)', 4326) as geom) m
+```
+```{sql connection=con}
+create temporary table dist_to_herd as
+select id, name,
+st_distance(
+st_transform(geometry, 25832),
+  st_transform(ST_GeomFromText('POINT (48.0036891 7.8539392)', 4326), 25832)
+) as distance_toherdabau 
+from stations 
+
+```
+```{sql connection=con}
+select * from dist_to_herd where distance_toherdabau <1500
+```
+```{sql connection=con}
+
+create temporary table dist_to_muns as
+select id, name,
+st_distance(
+st_transform(geometry, 25832),
+  st_transform(ST_GeomFromText('POINT (47.9958609 7.8523349)', 4326), 25832)
+) as distance_tomunster 
+from stations 
+
+
+```
+```{sql connection=con}
+select * from dist_to_muns where distance_tomunster <150000
+```
+QUESTION: I think it is strange HOBO stations do not appear in this query. I don't understand why only BW stations appear as a result. 
+
+In class, you joined the vegetation class table with its lookup table and calculated the areas for each feature. As you might have noticed, there are duplicates in the description field. 
+This is obviously the reason why a lookup table was used. Aggregate these classes together and calculate the overall area for each cover class.
+ 
+
+```{sql connection=con}
+select d.name, (sum(st_area(vc.geometry))/1000000) as "tot area [Km2]" from vegetation_cover vc join vegetation_cover_description d on vc.description_id=d.id 
+group by d.name
+```
+
+Redo the last step but query the data with nice looking values like '34.1 km²' for the area and add a ratio field, which should give the share of each class on the total area in a '20.1%' style.
+
+
+```{sql connection=con}
+select d.name, round((sum(st_area(vc.geometry))/1000000)) || ' Km2' as tot_area from vegetation_cover vc join vegetation_cover_description d on vc.description_id=d.id
+group by d.name
+```
+
+```{sql connection=con}
+create temporary table tot_area_v as 
+select d.name, (sum(st_area(vc.geometry))/1000000) as tot_area_km2 from vegetation_cover vc join vegetation_cover_description d on vc.description_id=d.id 
+group by d.name
+```
+
+
+```{sql connection=con}
+select name, tot_area_Km2, round(tot_area_Km2*100/sum) as Ratio from tot_area_v, (SELECT SUM(tot_area_Km2) FROM tot_area_v) t
+```
+
+
+Do the einzugsgebiete and vegetation_cover tables cover the same area? 
+Answer: No, the einzugsgebiete table covers more distance. 
+
+```{sql connection=con}
+select 'Einzusgebiete' as location, area_Km2 from (select st_area(st_union(geometry)) / 1000000 as area_Km2 from einzugsgebiete limit 1) e
+union
+select 'Vegetation' as location, area_Km2 from (select st_area(st_union(geometry)) / 1000000 as area_Km2 from vegetation_cover limit 1) m
+
+```
+
+Select the 10 stations closest to your HOBO location and query their name and geometry. 
+Calculate the distance to your HOBO location in different coordinate systems. Use ETRS89/UTM 32N; DHDN/GK Z3 and WGS84/Pseudomercartor.
+Do the distances differ and if yes, why?
+```{sql connection=con}
+select  id, name, st_distance(st_transform(geometry, 25832), (select st_transform(geometry, 25832) from stations where name='Elisa Schneider')) as distance_ETRS89, 
+st_distance(st_transform(geometry, 31467), (select st_transform(geometry, 31467) from stations where name='Elisa Schneider')) as distance_DHDN, 
+st_distance(st_transform(geometry, 3395), (select st_transform(geometry, 3395) from stations where name='Elisa Schneider')) as distance_WGS84
+from stations
+where name!='Elisa Schneider' and geometry is not null and discipline_id < 100
+order by distance_WGS84 ASC limit 10
+
+```
+<div class="alert alert-info">
+ Answer: Small differences among the first two coordinates systems are due to coordinate transformation errors. The bigger difference in the WGS84 is because this coordinate system was designed to be used in the whole earth surface. This characteristic  makes the precision of the coordinates lower in comparison to coordinate systems designed to be used in specific, areas such as UTM32N or Gauss Kruger DHDN Z3 which are defined for smaller zones of the world. This last two coordinate systems have the origin of the coordinate system close to the area where they are used.   
+</div>
+
+
+### cleanup
+
+```{r}
+dbDisconnect(con)
+```
+
