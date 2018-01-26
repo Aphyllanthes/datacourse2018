@@ -1,0 +1,31 @@
+id,first_name,family_name,discipline,hobo_id,influence,Tmean,Tmn,Tmx,T90,rel_NA
+1,Arroyo,Beñat,Environmental_Science,NA,NA,,,,,
+2,Asimhi,Raymond,Environmental_Science,10760824,low,7.171203,5.44,9.21,1.510436,6.702899
+3,Dermann,Anna Floria,Environmental_Science,10347342,low,7.133791,5.89854,8.455105,1.030838,21.01449
+4,Dietz,Marc,Hydrology,10347322,medium,5.84,4.01,7.88,2.15,24.46
+5,Doumi,Sara,Environmental_Science,10350046,medium,7.45,5.91,9.27,2.27,20.1087
+6,Ejarque Valls,Celso,Environmental_Science,10350063,medium,5.45,3.51,8.02,1.47,19.02
+7,Garcia,Aitor ,Environmental_Science,10347323,low,6,4.51,8.46,1.67,"15,21"
+8,Grau,Leonie,Environmental_Science,10760767,medium,6.00,4.15,7.86,1.50,13.22
+9,Ioannidou,Dimitra,Environmental_Science,10347367,medium,5.51,3.52,7.83,1.29,18.659
+10,Kehl,Maximilian Peter,Hydrology,10132405,high,6.15,4.54,8.19,1.37,18.66
+11,Keller,Matthias,Hydrology,10349994,medium,6.51,4.95,8.5,1.4,17.21
+12,Kern,Luka Paul Alexander,Environmental_Science,10350087,high,6.16,4.00,8.64,1.90,15.6
+13,Köhler,Mario,Environmental_Science,10347324,NA,,,,,
+14,Kolodziej,Victoria,Environmental_Science,10350000,low,6.35,5.01,7.95,1.19,15.58
+15,Lorff,Marvin,Hydrology,10350095,medium,6.31,4.51,8.19,1.4,20.65
+16,Mennekes,David,Hydrology,10350084,medium,6.2,4.5,8.2,1.6,19.5
+17,Opdenhoff,Jasper,Hydrology,10350032,low,6.01,4.25,7.95,1.53,17.75
+18,Rentschler,Felix,Environmental_Science,10760815,low,6.28,4.14,9.41,1.83,22.28
+19,Scheller,Mirjam Sulamith,Hydrology,10350053,low,6.38,4.42,8.24,1.21,18.48
+20,Siegismund,Jan,Hydrology,10350031,low,4.57,2.65,7.12,1.68,15.76
+21,Veigel,Nadja,Hydrology,10350028,medium,6.035,4.276,8.195,1.489,22.283
+22,von Stackelberg,Nele,Environmental_Science,10350051,low,6.62,5.16,8.41,1.27,15.03
+23,Schneider,Elisa,Environmental_Science,10347391,medium,5.98,4.39,7.82,1.07,16.49
+24,Stölzle,Michael,Lecturer,10350103,low,7.25,5.78,8.71,1.54,12.9
+25,Stölzle,Michael,Lecturer,10347323,low,6.31,4.5,8.46,1.67,15.2
+26,Lange,Jens,Lecturer,10347357,low,7.17,5.38,9.24,1.51,10.1
+27,Weiler,Markus,Lecturer,10350056,NA,5.54,3.39,8.03,1.39,16.3
+28,Maelicke,Mirko,Lecturer,10347310,medium,6.33,4.8,7.99,1.27,22.5
+29,Maelicke,Mirko,Lecturer,10350083,high,7.03,5.26,9.18,2.31,21.5
+30,Maelicke,Mirko,Lecturer,10347364,low,6.26,4.51,8.24,1.82,22.8
