@@ -9,7 +9,7 @@ path <- "/Users/Nele/Documents/Uni/Master/Data/BigData/BW_Climate_1977_2016.txt"
 BW_C <- read_tsv(path)
 
 #path to climate indices:
-path_ci <- "climate_indices/"
+path_ci <- "/Users/Nele/Desktop/BackupNele-branch/"
 
 
 
@@ -27,14 +27,17 @@ rate.of.change.frame <- data.frame(Station_IDs = station.ids, Fd = NA, ETR = NA,
 # --------- Load all Indice-functions ------------------
 source(paste0(path_ci, "CDD.R"))
 source(paste0(path_ci, "ETR.R"))
-source(paste0(path_ci, "Fd.R"))
+
+source(paste0("climate_indices/Fd.R"))
+
 source(paste0(path_ci, "R10.R"))
 source(paste0(path_ci, "R5d.R"))
 source(paste0(path_ci, "R95T.R"))
 source(paste0(path_ci, "SDII.R"))
 source(paste0(path_ci, "Tn90.R"))
-source(paste0(path_ci, "GSL.R"))
-source(paste0(path_ci, "HWDI.R"))
+
+source(paste0( "climate_indices/GSL_Nele.R"))
+source(paste0( "climate_indices/HWDI_Nele.R"))
 
 # ----- Loop to calculate the ids for all the stations: -----
 for(i in 1:number.of.stations){
@@ -106,5 +109,12 @@ rate.of.change.frame$HWDI[i] <- vHWDI[[2]][1]
 
 }
 
-write.csv2(avg.result.frame, "average_all_stations.csv")
-write.csv2(rate.of.change.frame, "rate_of_change_all_stations.csv")
+#write.csv2(avg.result.frame, "average_all_stations.csv")
+#write.csv2(rate.of.change.frame, "rate_of_change_all_stations.csv")
+
+names(avg.result.frame)[2:11] <- paste0("avg_", names(avg.result.frame)[2:11] )
+names(rate.of.change.frame)[2:11] <- paste0("RoC_", names(rate.of.change.frame)[2:11] )
+
+result.frame <- cbind(avg.result.frame, rate.of.change.frame[,-1])
+write.csv2(result.frame, "indices_all_stations.csv")
+

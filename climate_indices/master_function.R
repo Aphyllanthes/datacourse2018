@@ -6,7 +6,7 @@ ID <- c(257, 259, 755, 1197, 1224, 1346,1443, 1468, 1602, 2074, 2638, 2712, 2814
 
 # Define your path to the orginal data file, this is for every student different
 # so it can't be part of the function
-path <- "C:/Users/X230/Desktop/Datamangement kurs/Climtae Change BW/BW_Climate_1977_2016.txt"
+path <- "/Users/Nele/Documents/Uni/Master/Data/BigData/BW_Climate_1977_2016.txt"
 
 
 do_it <- function(ID, path){
@@ -28,7 +28,7 @@ do_it <- function(ID, path){
   rm(fun_frostdays)
   source("climate_indices/ETR.R")
   source("climate_indices/GSL.R")
-  source("climate_indices/HWDI(marvin).R")
+  source("climate_indices/HWDI_2.R")
   source("climate_indices/Tn90.R")
   source("climate_indices/R10.R")
   source("climate_indices/CDD.R")
@@ -40,8 +40,12 @@ do_it <- function(ID, path){
  
   
   result_total <- tibble(ID = ID, 
-                         average_Fd = NA, average_ETR = NA, average_GSL = NA, average_HWDI = NA, average_Tn90 = NA, average_R10 = NA, average_CDD = NA, average_R5d = NA, average_SDII = NA, average_R95T = NA,
-                         change_Fd = NA, change_ETR = NA, change_GSL = NA, change_HWDI = NA, change_Tn90 = NA, change_R10 = NA, change_CDD = NA, change_R5d = NA, change_SDII = NA, change_R95T = NA)
+                         average_Fd = NA, average_ETR = NA, average_GSL = NA, 
+                         average_HWDI = NA, average_Tn90 = NA, average_R10 = NA, 
+                         average_CDD = NA, average_R5d = NA, average_SDII = NA, average_R95T = NA,
+                         change_Fd = NA, change_ETR = NA, change_GSL = NA, change_HWDI = NA, 
+                         change_Tn90 = NA, change_R10 = NA, change_CDD = NA, change_R5d = NA, 
+                         change_SDII = NA, change_R95T = NA)
   
   
   for (i in 1:length(ID)) {
@@ -80,8 +84,8 @@ do_it <- function(ID, path){
     result_total$change_CDD[i] <- result_CDD$rate.of.change
     
     result_R5d <- R5d(bw = raw_data, idstation = ID[i])
-    result_total$average_R5d[i] <- result_R5d[[3]]
-    result_total$change_R5d[i] <- result_R5d[[2]]
+    result_total$average_R5d[i] <- result_R5d[[2]]
+    result_total$change_R5d[i] <- result_R5d[[3]]
     
     result_SDII <- SDII(data = raw_data, ID = ID[i])
     result_total$average_SDII[i] <- result_SDII$total_mean
