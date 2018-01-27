@@ -1,0 +1,165 @@
+---
+title: "PostGIS"
+author: "Mirko Mälicke"
+output:
+  html_notebook:
+    theme: flatly
+    toc: yes
+  html_document:
+    theme: flatly
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, echo=FALSE, include=T}
+# require the package
+if (!("RPostgreSQL" %in% installed.packages())){
+  install.packages("RPostgreSQL")
+}
+if (!("getPass" %in% installed.packages())){
+  install.packages("getPass")
+}
+require(RPostgreSQL)
+require(getPass)
+require(ggplot2)
+
+# establish the connection
+drv <- dbDriver('PostgreSQL')
+con <- dbConnect(drv, host='openhydro.de', port=5432, user=getPass('Provide the user'), 
+                 password=getPass('Provide the password'), dbname='dwd')
+```
+
+Select the biggest catchment from the einzugsgebiete table.
+```{sql connection=con}
+select id, name, st_area(st_asewkt(geometry)) / 1000000 as "area [km2]" 
+from einzugsgebiete 
+order by "area [km2]" desc limit 1
+```
+
+Select the biggest catchment from the einzugsgebiete table, whichs' name starts with an 'S'.
+```{sql connection=con}
+select id, name, st_area(st_asewkt(geometry)) / 1000000 as "area [km2]" 
+from einzugsgebiete 
+where name like 'S%' 
+order by "area [km2]" desc limit 1
+```
+
+Select the smallest catchment fron the einzugsgebiete table, which contains a station.
+```{sql connection=con}
+select id, name_catchment, name_station, st_area(st_asewkt(catchment_area)) /1000000 as "catchment area [km2]"
+from 
+  (select id, name as name_catchment, geometry as catchment_area from einzugsgebiete) e
+  join 
+  (select name as name_station, geometry as station_coords from stations) s
+on st_within(station_coords, catchment_area)
+order by "catchment area [km2]" asc limit 1
+
+```
+
+
+Select the two stations which are closest / farest away from your own location in a single <span style="color:blue">UNION</span> statement.
+```{sql connection=con}
+select 'closest' as "closest/farest", id, name, distance / 1000 as "distance [km]" from 
+  (select st_distance(st_transform(geometry, 25832), (select st_transform(geometry,25832)
+  from stations where id=12)) as distance, id, name 
+  from stations 
+  where id!=12 and geometry is not null 
+  order by distance asc limit 1) a
+union
+select 'farest' as "closest/farest", id, name, distance / 1000 as "distance [km]" from
+  (select st_distance(st_transform(geometry, 25832), (select st_transform(geometry,25832) from stations where id=12)) as distance, id, name from stations 
+  where id!=12 and geometry is not null 
+  order by distance desc limit 1) a
+
+
+
+```
+
+In a new project, you would like to build a new weather station either close to the Herderbau or near the Münster in Freiburg. You decide to chose the 
+location which has less other stations in a 1.5 km radius
+```{sql connection=con}
+select 'Münster' as location, count(id) as amount_of_stations
+from stations 
+where st_within(st_transform(geometry, 25832), st_buffer(st_transform(st_setsrid(st_point(7.852789, 47.995581),4326), 25832),1500)) 
+union
+select 'Herderbau' as location, count(id) as amount_of_stations
+from stations 
+where st_within(st_transform(geometry, 25832), st_buffer(st_transform(st_setsrid(st_point(7.85331, 48.0028),4326), 25832),1500))
+
+```
+
+In class, you joined the vegetation class table with its lookup table and calculated the areas for each feature. As you might have noticed, there are duplicates in the description field. 
+This is obviously the reason why a lookup table was used. Aggregate these classes together and calculate the overall area for each cover class.
+```{sql connection=con}
+select name, description_id, sum(area) / 1000000 as "area [km²]" from
+  (select vc.id, vc.description_id, d.name, st_area(vc.geometry) as area from
+    (select id, description_id, geometry from vegetation_cover) vc
+    join vegetation_cover_description d 
+    on vc.description_id=d.id
+  ) a
+
+group by name, description_id
+```
+
+Redo the last step but query the data with nice looking values like '34.1 km²' for the area and add a ratio field, which should give the share of each class on the total area in a '20.1%' style.
+```{sql connection=con}
+create temporary table share_lk as 
+ select name, description_id, round(cast(area as numeric),1) as area from
+  (select name, description_id, sum(area) / 1000000 as area from
+    (select vc.id, vc.description_id, d.name, st_area(vc.geometry) as area from
+      (select id, description_id, geometry from vegetation_cover) vc
+      join vegetation_cover_description d 
+      on vc.description_id=d.id) a
+  group by name, description_id) b
+```  
+```{sql connection=con}  
+select name, description_id, area || 'km²' as area, round(cast((area/(select sum(area) from share_lk))*100 as numeric),1) || '%' as ratio from share_lk
+```
+
+
+Do the einzugsgebiete and vegetation_cover tables cover the same area?
+```{sql connection=con}
+ 
+    select 'catchment areas' as "type", st_area(st_union(geometry))/100000 as "area [km²]" from einzugsgebiete 
+    union
+    select 'vegetation' as "type", st_area(st_union(geometry))/100000 as "area [km²]" from vegetation_cover
+```
+
+
+Select the 10 stations closest to your HOBO location and query their name and geometry. 
+Calculate the distance to your HOBO location in different coordinate systems. Use ETRS89/UTM 32N; DHDN/GK Z3 and WGS84/Pseudomercartor.
+Do the distances differ and if yes, why?
+```{sql connection=con}
+--UTM zone 32N
+select name, st_asewkt(st_transform(geometry, 25832)) as geometry, 
+    st_distance(st_transform(geometry, 25832), (select st_transform(geometry, 25832) from     stations where id = 12)) / 1000 as "distance [km]" 
+from stations where id != 12 
+order by "distance [km]" asc limit 10;
+```
+```{sql connection=con}
+--DHDN / 3-degree Gauss-Kruger zone 3
+select name, st_asewkt(st_transform(geometry, 31467)) as geometry, 
+    st_distance(st_transform(geometry, 31467), (select st_transform(geometry, 31467) from     stations where id = 12)) / 1000 as "distance [km]" 
+from stations where id != 12 
+order by "distance [km]" asc limit 10;
+```
+```{sql connection=con}
+--WGS84 Web Mercator
+select name, st_asewkt(st_transform(geometry, 3857)) as geometry, 
+    st_distance(st_transform(geometry, 3857), (select st_transform(geometry, 3857) from     stations where id = 12)) / 1000 as "distance [km]" 
+from stations where id != 12 
+order by "distance [km]" asc limit 10;
+```
+<div class="alert alert-info">
+Answer: They differ, because the different srid were used describing different coordinate reference system. There is no big difference between the used UTM zone 32N and DHDN / 3-degree Gauss-Kruger zone 3, because they are to describe smaller regions, while the WGS84 Web Mercator is made to use it for large-scale maps e.g. world maps. WGS84 Web Mercator is therefore the standard for web applications like google maps.
+</div>
+
+
+
+### cleanup
+
+```{r}
+dbDisconnect(con)
+```
+

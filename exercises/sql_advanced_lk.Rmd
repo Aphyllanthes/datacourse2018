@@ -1,0 +1,234 @@
+---
+output: html_notebook
+---
+dw---
+title: "Advanced SQL"
+author: "Mirko Mälicke"
+output:
+  html_notebook:
+    theme: flatly
+    toc: yes
+  html_document:
+    theme: flatly
+    toc: yes
+  pdf_document:
+    toc: yes
+---
+
+```{r, echo=FALSE, include=T}
+# require the package
+if (!("RPostgreSQL" %in% installed.packages())){
+  install.packages("RPostgreSQL")
+}
+if (!("getPass" %in% installed.packages())){
+  install.packages("getPass")
+}
+require(RPostgreSQL)
+require(getPass)
+require(ggplot2)
+
+# establish the connection
+drv <- dbDriver('PostgreSQL')
+con <- dbConnect(drv, host='openhydro.de', port=5432, user=getPass('Provide the user'), 
+                 password=getPass('Provide the password'), dbname='dwd')
+```
+
+Build a temporary table called *name_precipitation*, where you should replace *name* with your actual name. This table shall contain 
+all measurements from the data table holding precipitation information. 
+```{sql connection=con}
+create temporary table lk_precipitation as
+select id, date, variable_id, value as precipitation from data where variable_id=1
+```
+
+Create a view on this table that holds monthly statistics for every station id. Calculate the monthly sum, the highest observed daily 
+rainfall sum, the number of extreme rainfalls (daily precipitation > 30).
+```{sql connection=con}
+create temporary view lk_precipitation_monthly as
+select id, date_trunc('month',date) as month,
+  sum(precipitation) as monthly_sum,
+  max(precipitation) as max_rain,
+  count(case when precipitation > 30 then precipitation end) as extremes_m
+from lk_precipitation
+group by id, month
+```
+```{sql connection=con}
+select * from lk_precipitation_monthly limit 10
+```
+
+
+Create a view on the last view, that aggregates the same statistics for anual overviews.
+```{sql connection=con}
+create temporary view lk_precipitation_yearly as
+select id, date_trunc('year',month) as year,
+  sum(monthly_sum) as yearly_sum,
+  max(max_rain) as rain_max,
+  sum(extremes_m) as extremes_y
+from lk_precipitation_monthly
+group by id, year
+```
+```{sql connection=con}
+select * from lk_precipitation_yearly limit 10
+```
+
+Which station observed the highest monthly rainfall sum?
+```{sql connection=con}
+select id, monthly_sum 
+from lk_precipitation_monthly 
+order by monthly_sum desc limit 1
+```
+
+Which station observed the most extreme rainfall occurences within one month? Which within one year?
+```{sql connection=con}
+select 'within a month' as most_extreme_rainfalls, id, extremes_m as extremes, month as date from lk_precipitation_monthly where extremes_m = (select max(extremes_m) from lk_precipitation_monthly)
+union
+select 'within a year' as most_extreme_rainfalls, id, extremes_y as extremes, year as date from lk_precipitation_yearly where extremes_y = (select max(extremes_y) from lk_precipitation_yearly)
+
+```
+
+
+
+
+Which was the year with the most overall extreme rainfall occurences? (ignoring the station)
+```{sql connection=con}
+select sum(extremes_y) as extremes, year from lk_precipitation_yearly group by year order by extremes desc limit 1
+```
+
+Which is the station with the most extreme rainfall events within this year (from the last chunk)? 
+Which one with the most extreme rainfall events overall?
+```{sql connection=con}
+select id, extremes_m, month from lk_precipitation_monthly 
+where month >= '1982-01-01' and month <= '1982-12-01'  
+order by extremes_m desc limit 1
+```
+
+```{sql connection=con}
+select id, sum(extremes_y) from lk_precipitation_yearly group by id order by sum(extremes_y) desc limit 1
+```
+
+
+Create a view, that includes only the records from _data_ which fulfilled the extreme rainfall constraint.
+Join another column to this view, that holds the _type of precipitation_ variable. From this Join, create a histogram of _type of precipitation_. Calculate an overall histogram.
+```{sql connection=con}
+create temporary view extr_prec_type_lk as
+select extr.id, extr.date, prec, type_of_prec
+from
+  (select id, date, value as prec from data where variable_id = 1 and value > 30) extr
+  join
+  (select id, date, value as type_of_prec from data where variable_id = 3) type_of_prec
+on type_of_prec.id=extr.id and type_of_prec.date=extr.date
+
+
+```
+```{sql connection=con, output.var="hist"}
+select * from extr_prec_type_lk 
+```
+```{r}
+hist(hist$type_of_prec)
+```
+
+
+
+**OPTIONAL:** Can you redo the last step and do the same analysis for 'per station' histograms?
+```{sql connection=con, output.var="hist2"}
+select distinct  id, type_of_prec from extr_prec_type_lk group by id, type_of_prec order by id asc 
+-- with further query 'where id = id' one could plot the histograms per station
+```
+
+
+Use the insights of the last two chunks and write two sentences about the _type of precipitation_ variable. How useful is it? 
+<div class="alert alert-info">
+Answer: The variable shows the aggregate state of the precipitation. Therefore the measurements can be described more precisely. This shows that extreme precipitation (constraint: daily precipitation > 30 mm) occur not just as liquid precipitation. If this distribution changes with a higher threshold, could be checked. The threshold for a extrme precipitation event, set by the german weather service, is > 25 mm/h or 35 mm within 6 hours. If one set this threshold (see below), there are logically lower frequency, but no clear change in the distribution of 'type of precipitation'.
+</div>
+
+
+```{sql connection=con, output.var="hist3"}
+select extr.id, extr.date, prec, type_of_prec
+from
+  (select id, date, value as prec from data where variable_id = 1 and value > 70) extr
+  join
+  (select id, date, value as type_of_prec from data where variable_id = 3) type_of_prec
+on type_of_prec.id=extr.id and type_of_prec.date=extr.date
+```
+
+```{r}
+hist(hist3$type_of_prec)
+```
+
+
+Load the anual overview on extreme rainfalls into a data.frame and plot a violine plot of the amount of extreme rainfalls per station.
+```{sql connection=con, output.var="rain.annual"}
+select * from lk_precipitation_yearly order by year asc
+```
+```{r}
+View(rain.annual)
+rain.annual$id <- as.character(rain.annual$id)
+ggplot(data = rain.annual, mapping = aes(id, extremes_y))+
+  geom_violin(aes(group = id, fill = id))+
+  geom_boxplot(width = 0.2)
+```
+
+Redo the last exercise for the monthly extreme rainfall counts. Does this change the picture?
+What can you say about the distribution of extreme rainfall events from these plots?
+```{sql connection=con, output.var="rain.monthly"}
+select * from lk_precipitation_monthly
+```
+```{r}
+View(rain.monthly)
+rain.monthly$id <- as.character(rain.monthly$id)
+ggplot(data = rain.monthly, mapping = aes(id, extremes_m))+
+  geom_violin(aes(group=id, fill = id), width = 1)+
+  geom_boxplot(width=0.2)
+              
+```
+<div class="alert alert-info">
+Answer: For almost all stations usually the annual count of extreme rainfalls lies beneath 5 and never was higher then 10 for the last 81 years. Just two stations (id: 1346, 1468) have their median annual extreme rainfall counts above 7 and extraordinary years with a lot of extreme rainfall events (outliers). The plot of the monthly extreme rainfall counts shows that extreme rainfalls are extraordinary events for every station, because the median lies at zero for every station. Just for three stations the upper quartile reaches the one. The plot is dominated by outliers. The two stations with the highest outliers are also the two with the highest annual extreme rainfall counts.
+
+</div>
+
+Load the locations for the used stations from the database.
+```{sql connection=con, output.var="locations"}
+select yearly.id, yearly.year, yearly.extremes_y, stations.name, stations.elevation, stations.lon, stations.lat
+from 
+  (select id, year, extremes_y from lk_precipitation_yearly) yearly
+  join
+  (select id, name, elevation, st_x(st_transform(st_asewkt(geometry),25832)) as lon,
+  st_y(st_transform(st_asewkt(geometry),25832)) as lat from stations) stations
+on stations.id = yearly.id
+
+```
+
+```{r}
+View(locations)
+```
+
+
+Plot these locations and represent any measure for annual variance in extreme rainfall events by the point size of the used locations.<br>
+**OPTIONAL:** Additionally mark the station showing the most and least recorded extreme rainfalls by another marker into the same plot. (eg. use a green and a red cross or star.)
+
+```{r}
+most <- subset(locations, id == "1346")
+least <- subset(locations, id == "5275")
+
+ggplot(data = locations, mapping = aes(x=lon, y=lat, size=extremes_y, leg)) + 
+  geom_point(data = locations, aes(size = extremes_y))+
+  geom_point(data = most, colour = "darkred", pch = 3, cex = 6)+
+  geom_point(data = least, colour = "darkgreen", pch = 8, cex = 4)
+```
+
+How can you interpret this result?
+<div class="alert alert-info">
+Answer: One could say, that there are especially in the black forest the most extreme rainfall events.
+
+
+</div>
+
+# cleanup
+
+```{r}
+dbDisconnect(con)
+```
+
+
+
+
+
